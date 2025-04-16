@@ -212,7 +212,7 @@ def get_last_sync():
     sync_data = garmin_obj.get_device_last_used()
     if GARMIN_DEVICENAME_AUTOMATIC:
         GARMIN_DEVICENAME = sync_data.get('lastUsedDeviceName') or "Unknown"
-        GARMIN_DEVICEID = sync_data.get('userDeviceId') or 3501411686
+        GARMIN_DEVICEID = sync_data.get('userDeviceId') or 0000000000
     points_list.append({
         "measurement":  "DeviceSync",
         "time": datetime.fromtimestamp(sync_data['lastUsedDeviceUploadTime']/1000, tz=pytz.timezone("UTC")).isoformat(),
