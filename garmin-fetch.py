@@ -48,7 +48,7 @@ RATE_LIMIT_CALLS_SECONDS = int(os.getenv("RATE_LIMIT_CALLS_SECONDS", 5)) # optio
 INFLUXDB_ENDPOINT_IS_HTTP = False if os.getenv("INFLUXDB_ENDPOINT_IS_HTTP") in ['False','false','FALSE','f','F','no','No','NO','0'] else True # optional
 GARMIN_DEVICENAME_AUTOMATIC = False if GARMIN_DEVICENAME != "Unknown" else True # optional
 UPDATE_INTERVAL_SECONDS = int(os.getenv("UPDATE_INTERVAL_SECONDS", 300)) # optional
-FETCH_ADVANCED_TRAINING_DATA = False if os.getenv("FETCH_ADVANCED_TRAINING_DATA") in ['False','false','FALSE','f','F','no','No','NO','0'] else True # optional
+FETCH_ADVANCED_TRAINING_DATA = True if os.getenv("FETCH_ADVANCED_TRAINING_DATA") in ['True', 'true', 'TRUE','t', 'T', 'yes', 'Yes', 'YES', '1'] else False # optional
 
 # %%
 for handler in logging.root.handlers[:]:
