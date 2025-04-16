@@ -48,6 +48,7 @@ RATE_LIMIT_CALLS_SECONDS = int(os.getenv("RATE_LIMIT_CALLS_SECONDS", 5)) # optio
 INFLUXDB_ENDPOINT_IS_HTTP = False if os.getenv("INFLUXDB_ENDPOINT_IS_HTTP") in ['False','false','FALSE','f','F','no','No','NO','0'] else True # optional
 GARMIN_DEVICENAME_AUTOMATIC = False if GARMIN_DEVICENAME != "Unknown" else True # optional
 UPDATE_INTERVAL_SECONDS = int(os.getenv("UPDATE_INTERVAL_SECONDS", 300)) # optional
+FETCH_ADVANCED_TRAINING_DATA = False if os.getenv("FETCH_ADVANCED_TRAINING_DATA") in ['False','false','FALSE','f','F','no','No','NO','0'] else True # optional
 
 # %%
 for handler in logging.root.handlers[:]:
@@ -166,7 +167,7 @@ def get_daily_stats(date_str):
                 "restingHeartRate": stats_json.get("restingHeartRate"),
                 "minAvgHeartRate": stats_json.get("minAvgHeartRate"),
                 "maxAvgHeartRate": stats_json.get("maxAvgHeartRate"),
-                
+
                 "stressDuration": stats_json.get("stressDuration"),
                 "restStressDuration": stats_json.get("restStressDuration"),
                 "activityStressDuration": stats_json.get("activityStressDuration"),
@@ -175,7 +176,7 @@ def get_daily_stats(date_str):
                 "lowStressDuration": stats_json.get("lowStressDuration"),
                 "mediumStressDuration": stats_json.get("mediumStressDuration"),
                 "highStressDuration": stats_json.get("highStressDuration"),
-                
+
                 "stressPercentage": stats_json.get("stressPercentage"),
                 "restStressPercentage": stats_json.get("restStressPercentage"),
                 "activityStressPercentage": stats_json.get("activityStressPercentage"),
@@ -183,14 +184,14 @@ def get_daily_stats(date_str):
                 "lowStressPercentage": stats_json.get("lowStressPercentage"),
                 "mediumStressPercentage": stats_json.get("mediumStressPercentage"),
                 "highStressPercentage": stats_json.get("highStressPercentage"),
-                
+
                 "bodyBatteryChargedValue": stats_json.get("bodyBatteryChargedValue"),
                 "bodyBatteryDrainedValue": stats_json.get("bodyBatteryDrainedValue"),
                 "bodyBatteryHighestValue": stats_json.get("bodyBatteryHighestValue"),
                 "bodyBatteryLowestValue": stats_json.get("bodyBatteryLowestValue"),
                 "bodyBatteryDuringSleep": stats_json.get("bodyBatteryDuringSleep"),
                 "bodyBatteryAtWakeTime": stats_json.get("bodyBatteryAtWakeTime"),
-                
+
                 "averageSpo2": stats_json.get("averageSpo2"),
                 "lowestSpo2": stats_json.get("lowestSpo2"),
             }
@@ -201,15 +202,17 @@ def get_daily_stats(date_str):
     else:
         logging.debug("No daily stat data available for the give date " + date_str)
         return []
-    
+
 
 # %%
 def get_last_sync():
     global GARMIN_DEVICENAME
+    global GARMIN_DEVICEID
     points_list = []
     sync_data = garmin_obj.get_device_last_used()
     if GARMIN_DEVICENAME_AUTOMATIC:
         GARMIN_DEVICENAME = sync_data.get('lastUsedDeviceName') or "Unknown"
+        GARMIN_DEVICEID = sync_data.get('userDeviceId') or 3501411686
     points_list.append({
         "measurement":  "DeviceSync",
         "time": datetime.fromtimestamp(sync_data['lastUsedDeviceUploadTime']/1000, tz=pytz.timezone("UTC")).isoformat(),
@@ -629,7 +632,7 @@ def fetch_activity_GPS(activityIDdict):
 
                     point = {
                         "measurement": "ActivityGPS",
-                        "time": time_obj.isoformat(), 
+                        "time": time_obj.isoformat(),
                         "tags": {
                             "Device": GARMIN_DEVICENAME,
                             "ActivityID": activityID,
@@ -648,10 +651,195 @@ def fetch_activity_GPS(activityIDdict):
                         }
                     }
                     points_list.append(point)
-                
+
                 lap_index += 1
         logging.info(f"Success : Fetching TCX details for activity with id {activityID}")
     return points_list
+
+# %%
+def get_training_readiness(date_str):
+    points_list = []
+    tr_list_all = garmin_obj.get_training_readiness(date_str)
+    if tr_list_all:
+        for tr_dict in tr_list_all:
+            data_fields = {
+                    "level": tr_dict.get("level"),
+                    "feedbackLong": tr_dict.get("feedbackLong"),
+                    "feedbackShort": tr_dict.get("feedbackShort"),
+                    "score": tr_dict.get("score"),
+                    "sleepScore": tr_dict.get("sleepScore"),
+                    "sleepScoreFactorPercent": tr_dict.get("sleepScoreFactorPercent"),
+                    "sleepScoreFactorFeedback": tr_dict.get("sleepScoreFactorFeedback"),
+                    "recoveryTime": tr_dict.get("recoveryTime"),
+                    "recoveryTimeFactorPercent": tr_dict.get("recoveryTimeFactorPercent"),
+                    "recoveryTimeFactorFeedback": tr_dict.get("recoveryTimeFactorFeedback"),
+                    "acwrFactorPercent": tr_dict.get("acwrFactorPercent"),
+                    "acwrFactorFeedback": tr_dict.get("acwrFactorFeedback"),
+                    "acuteLoad": tr_dict.get("acuteLoad"),
+                    "stressHistoryFactorPercent": tr_dict.get("stressHistoryFactorPercent"),
+                    "stressHistoryFactorFeedback": tr_dict.get("stressHistoryFactorFeedback"),
+                    "hrvFactorPercent": tr_dict.get("hrvFactorPercent"),
+                    "hrvFactorFeedback": tr_dict.get("hrvFactorFeedback"),
+                    "hrvWeeklyAverage": tr_dict.get("hrvWeeklyAverage"),
+                    "validSleep": tr_dict.get("validSleep"),
+                    "inputContext": tr_dict.get("inputContext"),
+                    "primaryActivityTracker": tr_dict.get("primaryActivityTracker"),
+                    "recoveryTimeChangePhrase": tr_dict.get("recoveryTimeChangePhrase"),
+                }
+            if not all(value is None for value in data_fields.values()):
+                points_list.append({
+                    "measurement":  "TrainingReadiness",
+                    "time": pytz.timezone("UTC").localize(datetime.strptime(tr_dict['timestamp'],"%Y-%m-%dT%H:%M:%S.%f")).isoformat(), # Use GMT 12:00 is timestamp is not available (issue #15)
+                    "tags": {
+                        "Device": GARMIN_DEVICENAME,
+                        "Frequency" : "Intraday",
+                    },
+                    "fields": data_fields
+                })
+        logging.info(f"Success : Fetching TrainingReadiness for date {date_str}")
+    return points_list
+
+# %%
+def get_training_status(date_str):
+    points_list = []
+    ts_dict = garmin_obj.get_training_status(date_str)
+    if ts_dict:
+        if ts_dict.get("mostRecentVO2Max").get("generic") and ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap") and ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData"):
+            data_fields = {
+                    "vo2MaxPreciseValue": ts_dict.get("mostRecentVO2Max").get("generic").get("vo2MaxPreciseValue"),
+                    "fitnessAge": ts_dict.get("mostRecentVO2Max").get("generic").get("fitnessAge"),
+                    "fitnessAgeDescription": ts_dict.get("mostRecentVO2Max").get("generic").get("fitnessAgeDescription"),
+                    "altitudeAcclimation": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("altitudeAcclimation"),
+                    "previousAltitudeAcclimation": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("previousAltitudeAcclimation"),
+                    "heatAcclimationPercentage": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("heatAcclimationPercentage"),
+                    "previousHeatAcclimationPercentage": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("previousHeatAcclimationPercentage"),
+                    "heatTrend": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("heatTrend"),
+                    "altitudeTrend": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("altitudeTrend"),
+                    "currentAltitude": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("currentAltitude"),
+                    "previousAltitude": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("previousAltitude"),
+                    "acclimationPercentage": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("acclimationPercentage"),
+                    "previousAcclimationPercentage": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("previousAcclimationPercentage"),
+                    "altitudeAcclimationLocalTimestamp": ts_dict.get("mostRecentVO2Max").get("heatAltitudeAcclimation").get("altitudeAcclimationLocalTimestamp"),
+
+                    "monthlyLoadAerobicLow": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAerobicLow"),
+                    "monthlyLoadAerobicHigh": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAerobicHigh"),
+                    "monthlyLoadAnaerobic": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAnaerobic"),
+                    "monthlyLoadAerobicLowTargetMin": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAerobicLowTargetMin"),
+                    "monthlyLoadAerobicLowTargetMax": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAerobicLowTargetMax"),
+                    "monthlyLoadAerobicHighTargetMin": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAerobicHighTargetMin"),
+                    "monthlyLoadAerobicHighTargetMax": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAerobicHighTargetMax"),
+                    "monthlyLoadAnaerobicTargetMin": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAnaerobicTargetMin"),
+                    "monthlyLoadAnaerobicTargetMax": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("monthlyLoadAnaerobicTargetMax"),
+                    "trainingBalanceFeedbackPhrase": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("trainingBalanceFeedbackPhrase"),
+                    "primaryTrainingDevice": ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap").get(str(GARMIN_DEVICEID)).get("primaryTrainingDevice"),
+
+                    "weeklyTrainingLoad": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("weeklyTrainingLoad"),
+                    "trainingStatus": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("trainingStatus"),
+                    "loadTunnelMin": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("loadTunnelMin"),
+                    "loadTunnelMax": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("loadTunnelMax"),
+                    "loadLevelTrend": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("loadLevelTrend"),
+                    "sport": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("sport"),
+                    "subSport": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("subSport"),
+                    "fitnessTrendSport": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("fitnessTrendSport"),
+                    "fitnessTrend": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("fitnessTrend"),
+                    "trainingStatusFeedbackPhrase": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("trainingStatusFeedbackPhrase"),
+                    "trainingPaused": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("trainingPaused"),
+                    "acwrPercent": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("acwrPercent"),
+                    "acwrStatus": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("acwrStatus"),
+                    "acwrStatusFeedback": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("acwrStatusFeedback"),
+                    "dailyTrainingLoadAcute": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("dailyTrainingLoadAcute"),
+                    "maxTrainingLoadChronic": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("maxTrainingLoadChronic"),
+                    "minTrainingLoadChronic": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("minTrainingLoadChronic"),
+                    "dailyTrainingLoadChronic": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("dailyTrainingLoadChronic"),
+                    "dailyAcuteChronicWorkloadRatio": ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData").get(str(GARMIN_DEVICEID)).get("acuteTrainingLoadDTO").get("dailyAcuteChronicWorkloadRatio"),
+                }
+            if not all(value is None for value in data_fields.values()):
+                points_list.append({
+                    "measurement":  "TrainingStatus",
+                    "time": datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12, tzinfo=pytz.UTC).isoformat(), # Use GMT 12:00 is timestamp is not available (issue #15)
+                    "tags": {
+                        "Device": GARMIN_DEVICENAME,
+                        "DeviceId": GARMIN_DEVICEID,
+                    },
+                    "fields": data_fields
+                })
+        logging.info(f"Success : Fetching TrainingStatus for date {date_str}")
+    return points_list
+
+# %%
+def get_race_predictions(date_str):
+    points_list = []
+    rp_all = garmin_obj.get_race_predictions()
+    if rp_all:
+        data_fields = {
+            "time5K": rp_all.get("time5K"),
+            "time10K": rp_all.get("time10K"),
+            "timeHalfMarathon": rp_all.get("timeHalfMarathon"),
+            "timeMarathon": rp_all.get("timeMarathon"),
+        }
+        if not all(value is None for value in data_fields.values()):
+            points_list.append({
+                "measurement":  "RacePredictions",
+                "time": pytz.timezone("UTC").localize(datetime.strptime(rp_all['calendarDate'],"%Y-%m-%d")).isoformat(), # Use GMT 12:00 is timestamp is not available (issue #15)
+                "tags": {
+                    "Device": GARMIN_DEVICENAME,
+                },
+                "fields": data_fields
+            })
+        logging.info(f"Success : Fetching RacePredictions for date {date_str}")
+    return points_list
+
+# %%
+def get_enduranceescore(date_str):
+    points_list = []
+    end_dict = garmin_obj.get_endurance_score(date_str, date_str)
+    group_list = end_dict.get("groupMap").keys()
+    if group_list:
+        for group in group_list:
+            data_fields = {
+                "enduranceScoreAvg": end_dict.get("groupMap").get(group).get("groupAverage"),
+            }
+            if not all(value is None for value in data_fields.values()):
+                points_list.append({
+                    "measurement":  "EnduranceScore",
+                    "time": pytz.timezone("UTC").localize(datetime.strptime(group,"%Y-%m-%d")).isoformat(), # Use GMT 12:00 is timestamp is not available (issue #15)
+                    "tags": {
+                        "Device": GARMIN_DEVICENAME,
+                    },
+                    "fields": data_fields
+                })
+        logging.info(f"Success : Fetching EnduranceScore for date {date_str}")
+    return points_list
+
+
+# %%
+def get_hillscore(date_str):
+    points_list = []
+    hill_all = garmin_obj.get_hill_score(date_str, date_str)
+    if hill_all:
+        for hill in hill_all.get("hillScoreDTOList"):
+            data_fields = {
+                "strengthScore": hill.get("strengthScore"),
+                "enduranceScore": hill.get("enduranceScore"),
+                "hillScoreClassificationId": hill.get("hillScoreClassificationId"),
+                "overallScore": hill.get("overallScore"),
+                "hillScoreFeedbackPhraseId": hill.get("hillScoreFeedbackPhraseId"),
+                "vo2Max": hill.get("vo2Max"),
+                "vo2MaxPreciseValue": hill.get("vo2MaxPreciseValue"),
+            }
+            if not all(value is None for value in data_fields.values()):
+                points_list.append({
+                    "measurement":  "HillScore",
+                    "time": pytz.timezone("UTC").localize(datetime.strptime(hill['calendarDate'],"%Y-%m-%d")).isoformat(), # Use GMT 12:00 is timestamp is not available (issue #15)
+                    "tags": {
+                        "Device": GARMIN_DEVICENAME,
+                    },
+                    "fields": data_fields
+                })
+        logging.info(f"Success : Fetching HillScore for date {date_str}")
+    return points_list
+
+
 
 # %%
 def daily_fetch_write(date_str):
@@ -666,7 +854,13 @@ def daily_fetch_write(date_str):
     activity_summary_points_list, activity_with_gps_id_dict = get_activity_summary(date_str)
     write_points_to_influxdb(activity_summary_points_list)
     write_points_to_influxdb(fetch_activity_GPS(activity_with_gps_id_dict))
-    
+    if FETCH_ADVANCED_TRAINING_DATA:
+        write_points_to_influxdb(get_training_readiness(date_str))
+        write_points_to_influxdb(get_training_status(date_str))
+        write_points_to_influxdb(get_race_predictions(date_str))
+        write_points_to_influxdb(get_enduranceescore(date_str))
+        write_points_to_influxdb(get_hillscore(date_str))
+
 
 # %%
 def fetch_write_bulk(start_date_str, end_date_str):
@@ -723,7 +917,7 @@ else:
     except:
         logging.warning("No previously synced data found in local InfluxDB database, defaulting to 7 day initial fetching. Use specific start date ENV variable to bulk update past data")
         last_influxdb_sync_time_UTC = (datetime.today() - timedelta(days=7)).astimezone(pytz.timezone("UTC"))
-    
+
     while True:
         last_watch_sync_time_UTC = datetime.fromtimestamp(int(garmin_obj.get_device_last_used().get('lastUsedDeviceUploadTime')/1000)).astimezone(pytz.timezone("UTC"))
         if last_influxdb_sync_time_UTC < last_watch_sync_time_UTC:
@@ -734,4 +928,3 @@ else:
             logging.info(f"No new data found : Current watch and influxdb sync time is {last_watch_sync_time_UTC} UTC")
         logging.info(f"waiting for {UPDATE_INTERVAL_SECONDS} seconds before next automatic update calls")
         time.sleep(UPDATE_INTERVAL_SECONDS)
-        
