@@ -704,7 +704,7 @@ def get_training_status(date_str):
     points_list = []
     ts_dict = garmin_obj.get_training_status(date_str)
     if ts_dict:
-        if ts_dict.get("mostRecentVO2Max").get("generic") and ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap") and ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData"):
+        if ts_dict.get("mostRecentVO2Max") and ts_dict.get("mostRecentVO2Max").get("generic") and ts_dict.get("mostRecentTrainingLoadBalance") and ts_dict.get("mostRecentTrainingLoadBalance").get("metricsTrainingLoadBalanceDTOMap") and ts_dict.get("mostRecentTrainingStatus") and ts_dict.get("mostRecentTrainingStatus").get("latestTrainingStatusData"):
             data_fields = {
                     "vo2MaxPreciseValue": ts_dict.get("mostRecentVO2Max").get("generic").get("vo2MaxPreciseValue"),
                     "fitnessAge": ts_dict.get("mostRecentVO2Max").get("generic").get("fitnessAge"),
